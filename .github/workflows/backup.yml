@@ -1,0 +1,58 @@
+name: Odoo Daily Backup
+
+on:
+  schedule:
+    - cron: "0 16 * * *"
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ODOO_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+      - name: Install Git LFS
+        run: git lfs install
+
+      - name: Download backup from Odoo.sh
+        env:
+          SSH_HOST: ${{ secrets.ODOO_SSH_HOST }}
+          REMOTE_BACKUP_PATH: ${{ secrets.ODOO_BACKUP_PATH }}
+        run: |
+          DATE_STAMP=$(date +"%Y-%m-%d")
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa "$SSH_HOST" "cat $REMOTE_BACKUP_PATH" > "odoo_backup_${DATE_STAMP}.sql.gz"
+
+          if [ ! -s "odoo_backup_${DATE_STAMP}.sql.gz" ]; then
+            echo "ERROR: Download failed or file is empty."
+            exit 1
+          fi
+
+          echo "Downloaded odoo_backup_${DATE_STAMP}.sql.gz ($(stat -c%s odoo_backup_${DATE_STAMP}.sql.gz) bytes)"
+
+      - name: Track backups with Git LFS
+        run: git lfs track "*.sql.gz"
+
+      - name: Commit and push backup
+        run: |
+          DATE_STAMP=$(date +"%Y-%m-%d")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .gitattributes
+          git add "odoo_backup_${DATE_STAMP}.sql.gz"
+          git commit -m "Automated backup $DATE_STAMP" || echo "Nothing new to commit"
+          git push
+
+      - name: Remove backups older than 30 days
+        run: |
+          find . -maxdepth 1 -name "odoo_backup_*.sql.gz" -mtime +30 -exec git rm {} \; || true
+          git commit -m "Clean up old backups" || echo "Nothing to clean up"
+          git push || true
