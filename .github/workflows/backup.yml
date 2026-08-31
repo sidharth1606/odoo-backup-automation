@@ -50,3 +50,43 @@ jobs:
           git add "odoo_backup_${DATE_STAMP}.sql.gz"
           git commit -m "Automated backup $DATE_STAMP" || echo "Nothing new to commit"
           git push
+
+      - name: Upload backup to OneDrive
+        env:
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_REFRESH_TOKEN: ${{ secrets.MS_REFRESH_TOKEN }}
+        run: |
+          DATE_STAMP=$(date +"%Y-%m-%d")
+          FILE_NAME="odoo_backup_${DATE_STAMP}.sql.gz"
+
+          # Step 1: Exchange the refresh token for a fresh access token
+          TOKEN_RESPONSE=$(curl -s -X POST https://login.microsoftonline.com/consumers/oauth2/v2.0/token \
+            -d "grant_type=refresh_token" \
+            -d "client_id=$MS_CLIENT_ID" \
+            -d "refresh_token=$MS_REFRESH_TOKEN" \
+            -d "scope=Files.ReadWrite offline_access User.Read")
+
+          ACCESS_TOKEN=$(echo "$TOKEN_RESPONSE" | grep -oP '"access_token":"\K[^"]+')
+
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "ERROR: Could not get access token from Microsoft."
+            echo "$TOKEN_RESPONSE" | sed 's/"access_token":"[^"]*"/"access_token":"[HIDDEN]"/' | sed 's/"refresh_token":"[^"]*"/"refresh_token":"[HIDDEN]"/'
+            exit 1
+          fi
+
+          # Step 2: Upload the file to a folder called "OdooBackups" in OneDrive root
+          UPLOAD_URL="https://graph.microsoft.com/v1.0/me/drive/root:/OdooBackups/${FILE_NAME}:/content"
+
+          HTTP_STATUS=$(curl -s -o upload_response.json -w "%{http_code}" \
+            -X PUT "$UPLOAD_URL" \
+            -H "Authorization: Bearer $ACCESS_TOKEN" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@${FILE_NAME}")
+
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+            echo "Upload to OneDrive successful ($FILE_NAME)."
+          else
+            echo "ERROR: OneDrive upload failed with HTTP status $HTTP_STATUS"
+            cat upload_response.json
+            exit 1
+          fi
