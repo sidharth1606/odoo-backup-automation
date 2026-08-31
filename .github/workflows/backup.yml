@@ -2,7 +2,7 @@ name: Odoo Daily Backup
 
 on:
   schedule:
-    - cron: "30 0 * * *"
+    - cron: "30 5 * * *"
   workflow_dispatch:
 
 jobs:
