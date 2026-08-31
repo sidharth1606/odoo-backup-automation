@@ -50,9 +50,3 @@ jobs:
           git add "odoo_backup_${DATE_STAMP}.sql.gz"
           git commit -m "Automated backup $DATE_STAMP" || echo "Nothing new to commit"
           git push
-
-      - name: Remove backups older than 30 days
-        run: |
-          find . -maxdepth 1 -name "odoo_backup_*.sql.gz" -mtime +30 -exec git rm {} \; || true
-          git commit -m "Clean up old backups" || echo "Nothing to clean up"
-          git push || true
