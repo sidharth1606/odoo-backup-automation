@@ -1,0 +1,18 @@
+# Backup files
+*.sql.gz
+*.sql
+*.zip
+
+# Response files
+upload_response.json
+token_response.json
+
+# Environment files
+.env
+.env.local
+
+# SSH keys
+.ssh/
+
+# LFS
+.git/lfs/
